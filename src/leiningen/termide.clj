@@ -32,7 +32,7 @@
   (-> (ProcessBuilder. ["lein" "test"]) .inheritIO .start .waitFor)
   (println)
   ;; cljs
-  (let [cmd ["lein" "run" "-m" "shadow.cljs.devtools.cli" "compile" "karma-test"]]
+  (let [cmd ["./node_modules/.bin/shadow-cljs" "compile" "karma-test"]]
        (-> (ProcessBuilder. cmd) .inheritIO .start .waitFor))
   (let [chromium-bin (trim (:out (sh "which" "chromium")))
         cmd ["./node_modules/.bin/karma" "start" "--single-run" "--reporters" "junit,dots"]
