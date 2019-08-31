@@ -1,4 +1,5 @@
 (ns leiningen.termide
+  (:refer-clojure :exclude [test])
   (:import java.lang.ProcessBuilder
            java.lang.ProcessBuilder$Redirect)
   (:require [leiningen.core.main :refer [warn]]
@@ -6,7 +7,7 @@
             [leiningen.core.eval :refer [eval-in-project]]
             [leiningen.run :refer [run-form]]
             [nrepl.core :as nrepl]
-            [clojure.string :as string]
+            [clojure.string :refer [trim]]
             [clojure.java.io :refer [file]]
             [clojure.java.shell :refer [sh]]))
 
@@ -20,7 +21,34 @@
   [project args]
   (-> (ProcessBuilder. ["git" "init"]) .inheritIO .start .waitFor)
   (let [cmd ["nix-shell" "-p" "nodejs" "--run" "npm install"]]
+       (-> (ProcessBuilder. cmd) .inheritIO .start .waitFor))
+  (let [cmd ["nix-shell" "-p" "nodejs" "--run" "npm install karma-cli karma-junit-reporter"]]
        (-> (ProcessBuilder. cmd) .inheritIO .start .waitFor)))
+
+(defn test
+  "Run clj and cljs tests"
+  [project args]
+  ;; clj
+  (-> (ProcessBuilder. ["lein" "test"]) .inheritIO .start .waitFor)
+  (println)
+  ;; cljs
+  (let [cmd ["lein" "run" "-m" "shadow.cljs.devtools.cli" "compile" "karma-test"]]
+       (-> (ProcessBuilder. cmd) .inheritIO .start .waitFor))
+  (let [chromium-bin (trim (:out (sh "which" "chromium")))
+        cmd ["./node_modules/.bin/karma" "start" "--single-run" "--reporters" "junit,dots"]
+        pb (ProcessBuilder. cmd)]
+       (-> pb .environment (.put "CHROME_BIN" chromium-bin))
+       (-> pb .inheritIO .start .waitFor)))
+
+(defn dev
+  "Like the dev-alias provided by re-frame template, but with additional buildHook and termide in dependencies"
+  [project args]
+  (let [buildHook "{:build-hooks [(termide.hook/once-build)]}"]
+       (.delete state-file)
+       (.deleteOnExit state-file)
+       (eval-in-project (merge-profiles project [(get-in project [:profiles :dev])
+                                                 {:dependencies [['termide (termide-version)]]}])
+                        (run-form `shadow.cljs.devtools.cli ["watch" "app" "--config-merge" buildHook]))))
 
 (defn vim
   "Open vim with piggieback for shadow-cljs"
@@ -37,22 +65,12 @@
               (.deleteOnExit example-file))
         (-> (ProcessBuilder. cmd) .inheritIO .start .waitFor)))
 
-(defn dev
-  "Like the dev-alias provided by re-frame template, but with additional buildHook and termide in dependencies"
-  [project args]
-  (let [buildHook "{:build-hooks [(termide.hook/once-build)]}"]
-       (.delete state-file)
-       (.deleteOnExit state-file)
-       (eval-in-project (merge-profiles project [(get-in project [:profiles :dev])
-                                                 {:dependencies [['termide (termide-version)]]}])
-                        (run-form `shadow.cljs.devtools.cli ["watch" "app" "--config-merge" buildHook]))))
-
 (defn tmux
   "Open tmux with recommended windows"
   [project args]
   (let [keepOpen " ; bash"
         p (ProcessBuilder. ["tmux" "new" (str "git branch ; git log -n1 ; git status" keepOpen) ";"
-                                   "new-window" "-d" (str "lein test" keepOpen) ";"
+                                   "new-window" "-d" (str "lein termide test" keepOpen) ";"
                                    "new-window" "-d" (str "lein termide dev" keepOpen)])]
        (.remove (.environment p) "TMUX")
        (-> p .inheritIO .start .waitFor)))
@@ -78,13 +96,15 @@
 
 (defn termide
   "Terminal IDE for re-frame/shadow-cljs projects"
-  {:subtasks [#'setup #'dev #'vim #'tmux #'clj-eval #'cljs-eval]}
+  {:subtasks [#'setup #'test #'dev #'vim #'tmux #'clj-eval #'cljs-eval]}
   [project & args]
   (let [sub-name (first args)
         sub-args (rest args)]
        (case sub-name
              "setup"
                (setup project sub-args)
+             "test"
+               (test project sub-args)
              "dev"
                (dev project sub-args)
              "vim"
