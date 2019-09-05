@@ -40,6 +40,11 @@
        (-> pb .environment (.put "CHROME_BIN" chromium-bin))
        (-> pb .inheritIO .start .waitFor)))
 
+(defn release
+  "Compile productive build"
+  [project args]
+  (-> (ProcessBuilder. ["./node_modules/.bin/shadow-cljs" "release" ":app"]) .inheritIO .start .waitFor))
+
 (defn dev
   "Like the dev-alias provided by re-frame template, but with additional buildHook and termide in dependencies"
   [project args]
@@ -96,7 +101,7 @@
 
 (defn termide
   "Terminal IDE for re-frame/shadow-cljs projects"
-  {:subtasks [#'setup #'test #'dev #'vim #'tmux #'clj-eval #'cljs-eval]}
+  {:subtasks [#'setup #'test #'release #'dev #'vim #'tmux #'clj-eval #'cljs-eval]}
   [project & args]
   (let [sub-name (first args)
         sub-args (rest args)]
@@ -105,6 +110,8 @@
                (setup project sub-args)
              "test"
                (test project sub-args)
+             "release"
+               (release project sub-args)
              "dev"
                (dev project sub-args)
              "vim"
